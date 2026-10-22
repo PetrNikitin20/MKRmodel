@@ -1,7 +1,22 @@
 import { fail, text, uuid } from "./server.mjs";
 import { requireRole, secret, hashPassword } from "./security.mjs";
+import { exportSnapshot } from "../scripts/export-snapshot.mjs";
 export async function handleManagement(c) {
   const { db, user, path, method, body, json, audit, getAttempt, getTask } = c;
+  if (path === "/api/admin/backup" && method === "POST") {
+    requireRole(user, "admin");
+    await audit(db, user, "backup.export", null);
+    const snapshot = await exportSnapshot(db);
+    json(200, {
+      ...snapshot,
+      filename:
+        "cop-private-" +
+        new Date().toISOString().replace(/[:.]/g, "-") +
+        ".sql",
+      note: "Закрытая резервная копия. Содержит персональные данные и хеши паролей; активных сессий нет.",
+    });
+    return true;
+  }
   if (path === "/api/staff/journal" && method === "GET") {
     requireRole(user, "teacher", "tutor", "expert");
     if (

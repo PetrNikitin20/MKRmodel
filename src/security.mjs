@@ -34,12 +34,12 @@ export async function verifyPassword(password, hash) {
 export function validPassword(p) {
   return typeof p === "string" && p.length >= 12 && p.length <= 200;
 }
-export function cookieToken(req) {
+export function cookieToken(req, name = "cop_session") {
   return (req.headers.cookie || "")
     .split(";")
     .map((x) => x.trim())
-    .find((x) => x.startsWith("cop_session="))
-    ?.slice(12);
+    .find((x) => x.startsWith(name + "="))
+    ?.slice(name.length + 1);
 }
 export function requireRole(user, ...roles) {
   if (!user.roles.some((r) => roles.includes(r)))

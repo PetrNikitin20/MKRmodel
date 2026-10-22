@@ -17,6 +17,7 @@ import { mastery, simulate } from "./model.mjs";
 import { generateCode } from "./llm.mjs";
 import { handleLearning } from "./routes-learning.mjs";
 import { handleManagement } from "./routes-management.mjs";
+import { handleBrowser } from "./routes-browser.mjs";
 export const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
@@ -35,6 +36,9 @@ export function createApp(
     runnerToken = process.env.RUNNER_TOKEN,
   } = {},
 ) {
+  const cookieName = production
+    ? "cop_session"
+    : "cop_session_" + (new URL(origin).port || "80");
   const json = (res, status, value, headers = {}) => {
     res.writeHead(status, {
       "Content-Type": "application/json; charset=utf-8",
@@ -171,7 +175,7 @@ export function createApp(
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     );
     if (production)
       res.setHeader("Strict-Transport-Security", "max-age=31536000");
@@ -185,13 +189,45 @@ export function createApp(
       }
       if (!path.startsWith("/api/")) {
         if (method !== "GET") fail(405, "Метод не поддерживается");
+        const vendorFiles = [
+          "pyodide.mjs",
+          "pyodide.asm.mjs",
+          "pyodide.asm.wasm",
+          "python_stdlib.zip",
+          "pyodide-lock.json",
+        ];
+        if (path.startsWith("/vendor/pyodide/")) {
+          const name = path.slice("/vendor/pyodide/".length);
+          if (!vendorFiles.includes(name)) fail(404, "Ресурс не найден");
+          res.writeHead(200, {
+            "Content-Type": name.endsWith(".mjs")
+              ? "text/javascript"
+              : name.endsWith(".wasm")
+                ? "application/wasm"
+                : name.endsWith(".json")
+                  ? "application/json"
+                  : "application/zip",
+            "Cache-Control": "public, max-age=3600",
+          });
+          return res.end(
+            await readFile(
+              new URL("../node_modules/pyodide/" + name, import.meta.url),
+            ),
+          );
+        }
         const files = {
           "/": "index.html",
           "/app.js": "app.js",
           "/style.css": "style.css",
+          "/python-worker.js": "python-worker.js",
         };
         const file = files[path];
         if (!file) fail(404, "Страница не найдена");
+        if (file === "python-worker.js")
+          res.setHeader(
+            "Content-Security-Policy",
+            `default-src 'none'; script-src ${origin}/vendor/pyodide/ 'wasm-unsafe-eval'; connect-src ${origin}/vendor/pyodide/; worker-src 'none'; object-src 'none'`,
+          );
         res.writeHead(200, {
           "Content-Type": file.endsWith(".js")
             ? "text/javascript; charset=utf-8"
@@ -268,11 +304,11 @@ export function createApp(
           200,
           { user: publicUser(found) },
           {
-            "Set-Cookie": `cop_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${production ? "; Secure" : ""}`,
+            "Set-Cookie": `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${production ? "; Secure" : ""}`,
           },
         );
       }
-      const token = cookieToken(req);
+      const token = cookieToken(req, cookieName);
       const user =
         token &&
         (await db.one(
@@ -295,7 +331,8 @@ export function createApp(
           { ok: true },
           {
             "Set-Cookie":
-              "cop_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" +
+              cookieName +
+              "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" +
               (production ? "; Secure" : ""),
           },
         );
@@ -329,7 +366,8 @@ export function createApp(
           { ok: true, loginRequired: true },
           {
             "Set-Cookie":
-              "cop_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" +
+              cookieName +
+              "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" +
               (production ? "; Secure" : ""),
           },
         );
@@ -352,6 +390,7 @@ export function createApp(
         runAttempt,
       };
       if (await handleLearning(ctx)) return;
+      if (await handleBrowser(ctx)) return;
       if (await handleManagement(ctx)) return;
       fail(404, "Метод API не найден");
     } catch (e) {

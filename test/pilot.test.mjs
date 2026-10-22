@@ -227,6 +227,9 @@ test("teacher review atomically writes feedback, grade, evidence and audit", asy
   assert.equal(journal.data.reviews.length, 1);
   assert.equal(journal.data.attempts.length, 1);
   assert(journal.data.events.length >= 4);
+  assert.equal(journal.data.hypotheses.length, 1);
+  assert.equal(journal.data.experiments.length, 1);
+  assert.equal(journal.data.comparisons.length, 1);
 });
 test("unscoped teacher cannot inspect the pilot group", async () => {
   await db.query("DELETE FROM staff_scopes WHERE user_id='demo-teacher'");
@@ -416,4 +419,46 @@ test("private import is repeatable and preserves raw source provenance", async (
     ).course_id,
     "intro-ai",
   );
+});
+test("browser Python jobs compare outputs on server without automatic grades", async () => {
+  const r = await call("student", "browser-run/start", { attemptId });
+  assert.equal(r.status, 201);
+  assert(!JSON.stringify(r.data).includes("expected"));
+  const result = await call("student", "browser-run/finish", {
+    runId: r.data.id,
+    outputs: r.data.inputs.map((input) => ({
+      value: input.reduce((a, b) => a + b, 0),
+      error: null,
+    })),
+  });
+  assert.equal(result.data.status, "passed");
+  assert.equal(result.data.source, "browser_unverified");
+  assert.equal(result.data.grade, false);
+  assert.equal(
+    (
+      await call("student", "browser-run/finish", {
+        runId: r.data.id,
+        outputs: [],
+      })
+    ).status,
+    409,
+  );
+});
+test("Python worker has a separate CSP restricted to local runtime assets", async () => {
+  const response = await fetch(origin + "/python-worker.js");
+  assert.equal(response.status, 200);
+  const policy = response.headers.get("content-security-policy");
+  assert(policy.includes("connect-src " + origin + "/vendor/pyodide/"));
+  assert(policy.includes("worker-src 'none'"));
+  assert(!policy.includes("'unsafe-eval'"));
+  assert.equal((await fetch(origin + "/vendor/pyodide/unknown")).status, 404);
+});
+test("only admin can export a consistent private backup without sessions", async () => {
+  assert.equal((await call("student", "admin/backup", {})).status, 403);
+  await login("admin");
+  const result = await call("admin", "admin/backup", {});
+  assert.equal(result.status, 200);
+  assert(result.data.sql.includes("INSERT INTO users"));
+  assert(!result.data.sql.includes("INSERT INTO sessions"));
+  assert.equal(Object.keys(result.data.counts).length, 38);
 });

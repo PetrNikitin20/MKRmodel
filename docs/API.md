@@ -1,6 +1,6 @@
 # API v0.1
 
-Префикс `/api`, JSON, cookie `cop_session`. Все POST требуют заголовок Origin, точно равный APP_ORIGIN, и Content-Type application/json. Размер тела ≤64 КБ. Ответ с ошибкой: `{error: string}`. Временный пароль ограничивает доступ кодом 428 до его смены.
+Префикс `/api`, JSON, cookie `cop_session` в production; локально имя включает порт для разделения контуров. Все POST требуют заголовок Origin, точно равный APP_ORIGIN, и Content-Type application/json. Размер тела ≤64 КБ. Ответ с ошибкой: `{error: string}`. Временный пароль ограничивает доступ кодом 428 до его смены.
 
 | Метод | Путь | Назначение / роль |
 |---|---|---|
@@ -12,6 +12,9 @@
 | GET | /course?id=algorithms | Темы, условия, свои версии; без тестовых ответов и эталона |
 | POST | /hypotheses | Студент: `{taskId,prediction,rationale}` |
 | POST | /attempts | Студент: `{taskId,hypothesisId,code,explanation,assistance,baseVersion}` |
+| POST | /browser-run/start | Студент: `{attemptId,comparisonId?}`; код и входы без ожидаемых ответов |
+| POST | /browser-run/finish | `{runId,outputs:[{value,error}],error?}`; предварительный источник browser_unverified |
+| POST | /admin/backup | Администратор: согласованный закрытый SQL-снимок без сессий |
 | POST | /run | `{attemptId}`; свой код либо назначенный преподавателю |
 | POST | /simulate | `{hypothesisId,parameters:{algorithm,n,target,seed},conclusion}` |
 | POST | /compare | Своя работа: `{attemptId,source:reference/llm,conclusion,consent}` |

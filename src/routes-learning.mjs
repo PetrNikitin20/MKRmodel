@@ -289,6 +289,18 @@ export async function handleLearning(c) {
         "SELECT o.sheet,o.cell,o.raw_value,o.meaning,s.file_name FROM journal_observations o JOIN journal_sources s ON s.id=o.source_id WHERE o.user_id=$1 AND o.course_id=$2 ORDER BY o.sheet,o.cell",
         [target, course],
       ),
+      hypotheses: await db.rows(
+        "SELECT h.*,t.title FROM hypotheses h JOIN tasks t ON t.id=h.task_id JOIN learning_units u ON u.id=t.unit_id WHERE h.user_id=$1 AND u.course_id=$2 ORDER BY h.created_at DESC",
+        [target, course],
+      ),
+      experiments: await db.rows(
+        "SELECT s.* FROM simulator_runs s JOIN hypotheses h ON h.id=s.hypothesis_id JOIN tasks t ON t.id=h.task_id JOIN learning_units u ON u.id=t.unit_id WHERE s.user_id=$1 AND u.course_id=$2 ORDER BY s.created_at DESC",
+        [target, course],
+      ),
+      comparisons: await db.rows(
+        "SELECT c.*,r.number FROM comparisons c JOIN artifact_revisions r ON r.id=c.revision_id JOIN artifacts a ON a.id=r.artifact_id JOIN tasks t ON t.id=a.task_id JOIN learning_units u ON u.id=t.unit_id WHERE c.user_id=$1 AND u.course_id=$2 ORDER BY c.created_at DESC",
+        [target, course],
+      ),
       events: await db.rows(
         "SELECT kind,object_id,payload,created_at FROM learning_events WHERE user_id=$1 AND course_id=$2 ORDER BY created_at DESC LIMIT 100",
         [target, course],

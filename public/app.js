@@ -21,6 +21,29 @@ const roleNames = {
   admin: "Администратор",
   expert: "Внешний эксперт",
 };
+const assistanceNames = {
+  independent: "Самостоятельно",
+  reference: "С эталоном",
+  llm: "С LLM",
+  tutor: "С тьютором",
+};
+const statusNames = {
+  submitted: "Ожидает проверки",
+  reviewed: "Проверена",
+  passed: "Тесты пройдены",
+  failed: "Есть ошибки",
+  error: "Ошибка исполнения",
+  unavailable: "Не подключён",
+  running: "Выполняется",
+};
+const eventNames = {
+  "hypothesis.created": "Гипотеза сохранена",
+  "attempt.submitted": "Версия работы сохранена",
+  "experiment.saved": "Опыт записан",
+  "comparison.saved": "Сравнение сохранено",
+  "code.checked": "Код проверен на сервере",
+  "code.browser_checked": "Код проверен в браузере",
+};
 const levels = ["", "Базовый", "Средний", "Продвинутый"];
 let user,
   home,
@@ -51,7 +74,7 @@ const brand = () =>
 function login(reset = false) {
   user = null;
   $("#app").innerHTML =
-    `<div class="login"><section class="login-story">${brand()}<div class="eyebrow">Образовательное пространство</div><h1>Ваш путь<br>от гипотезы<br>к результату.</h1><p>Изучайте алгоритмы, проверяйте решения и собирайте доказательства своего прогресса в едином пространстве.</p><div class="login-points"><span>01 · Индивидуальный маршрут</span><span>02 · Практика и исследование</span></div></section><section class="login-form"><div class="login-box"><div class="eyebrow">Личный кабинет</div><h2>${reset ? "Обновите пароль" : "Добро пожаловать"}</h2><p class="muted">${reset ? "Временный пароль нужно заменить перед началом работы." : "Войдите с учетной записью, выданной администратором."}</p><form id="${reset ? "password" : "login"}">${reset ? '<label for="current">Текущий пароль</label><input id="current" name="current" type="password" autocomplete="current-password" required>' : '<label for="login">Логин</label><input id="login" name="login" autocomplete="username" required>'}<label for="password">${reset ? "Новый пароль" : "Пароль"}</label><input id="password" name="password" type="password" autocomplete="${reset ? "new-password" : "current-password"}" ${reset ? 'minlength="12"' : ""} required><button>${reset ? "Сохранить новый пароль" : "Войти в пространство"} →</button></form><small>Образовательный пилот · 1–2 курс<br>Доступ к результатам зависит от роли и назначенной учебной группы.</small></div></section></div>`;
+    `<div class="login"><section class="login-story">${brand()}<div class="eyebrow">Образовательное пространство</div><h1>Ваш путь<br>от гипотезы<br>к результату.</h1><p>Изучайте алгоритмы, проверяйте решения и собирайте доказательства своего прогресса в едином пространстве.</p><div class="login-points"><span>01 · Индивидуальный маршрут</span><span>02 · Практика и исследование</span></div></section><section class="login-form"><div class="login-box"><div class="eyebrow">Личный кабинет</div><h2>${reset ? "Обновите пароль" : "Добро пожаловать"}</h2><p class="muted">${reset ? "Временный пароль нужно заменить перед началом работы." : "Войдите с учетной записью, выданной администратором."}</p><form id="${reset ? "password-form" : "login-form"}">${reset ? '<label for="current">Текущий пароль</label><input id="current" name="current" type="password" autocomplete="current-password" required>' : '<label for="login">Логин</label><input id="login" name="login" autocomplete="username" required>'}<label for="password">${reset ? "Новый пароль" : "Пароль"}</label><input id="password" name="password" type="password" autocomplete="${reset ? "new-password" : "current-password"}" ${reset ? 'minlength="12"' : ""} required><button>${reset ? "Сохранить новый пароль" : "Войти в пространство"} →</button></form><small>Образовательный пилот · 1–2 курс<br>Доступ к результатам зависит от роли и назначенной учебной группы.</small></div></section></div>`;
 }
 function navItems() {
   const all = [["home", "Обзор пространства"]];
@@ -77,7 +100,11 @@ function navItems() {
   )
     all.push(["analytics", "Аналитика"]);
   if (user.roles.includes("admin"))
-    all.push(["admin", "Учетные записи"], ["audit", "Аудит действий"]);
+    all.push(
+      ["admin", "Учетные записи"],
+      ["backups", "Резервные копии"],
+      ["audit", "Аудит действий"],
+    );
   return all;
 }
 function shell(content) {
@@ -90,6 +117,13 @@ function shell(content) {
       .join(
         "",
       )}</nav><div class="aside-note"><span class="live-dot"></span> Пилот ЦОП · 0.1<br>Алгоритмы и структуры данных<br><br>Проверяем гипотезы.<br>Сохраняем ход исследования.</div></aside><main><div class="breadcrumb">ЦОП / ${esc(navItems().find((x) => x[0] === page)?.[1] || "Учебная лаборатория")}</div>${user.login.startsWith("demo-") ? '<div class="notice">Демонстрационный контур. Все учетные записи и результаты здесь вымышлены.</div>' : ""}${content}</main></div>`;
+  document.querySelectorAll("label:not([for])").forEach((label, index) => {
+    const control = label.nextElementSibling;
+    if (control && ["INPUT", "SELECT", "TEXTAREA"].includes(control.tagName)) {
+      control.id ||= "field-" + page + "-" + index;
+      label.htmlFor = control.id;
+    }
+  });
 }
 const head = (title, description, badge = "") =>
   `<div class="page-head"><div><h1>${title}</h1><p>${description}</p></div>${badge ? `<span class="badge">${badge}</span>` : ""}</div>`;
@@ -101,7 +135,8 @@ function courseCards(courses) {
 function landing() {
   if (user.roles.includes("student")) return "home";
   if (user.roles.includes("admin")) return "admin";
-  if (user.roles.some(r=>["teacher","tutor","expert"].includes(r))) return "staff";
+  if (user.roles.some((r) => ["teacher", "tutor", "expert"].includes(r)))
+    return "staff";
   if (user.roles.includes("methodist")) return "curriculum";
   return "analytics";
 }
@@ -200,10 +235,20 @@ async function showJournal(target) {
       "Журнал и артефакты",
       "Версии кода, проверки и события сохраняются на сервере.",
     ) +
-      `<div class="stats">${stat("Версии работ", d.attempts.length, "история сохраняется")}${stat("Проверки", d.runs.length, "запуски Python")}${stat("Отзывы", d.reviews.length, "от преподавателя")}</div><div class="section-title"><h2>Мои работы</h2></div>${d.attempts.length ? `<div class="table-wrap"><table><thead><tr><th>Работа</th><th>Версия</th><th>Проверка</th><th>Действия</th></tr></thead><tbody>${d.attempts.map((a) => `<tr><td><strong>${esc(a.title)}</strong><details><summary>Код и объяснение</summary><pre>${esc(a.code)}\n\n${esc(a.explanation)}</pre></details></td><td>v${a.number}<br><small>${esc(a.assistance)}</small></td><td>${esc(d.runs.find((r) => r.attempt_id === a.id)?.status || "Не запускалась")}<br><small>${esc(d.reviews.find((r) => r.attempt_id === a.id)?.feedback || "Ожидает преподавателя")}</small></td><td><button class="secondary" data-appeal="${a.id}">Апелляция</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty"><h3>Первая работа ещё впереди</h3>Выберите тему в дисциплине и сохраните решение.</div>'}<div class="section-title"><h2>События обучения</h2></div><div class="table-wrap"><table><thead><tr><th>Время</th><th>Событие</th></tr></thead><tbody>${d.events.map((e) => `<tr><td>${esc(new Date(e.created_at).toLocaleString("ru"))}</td><td>${esc(e.kind)}</td></tr>`).join("") || '<tr><td colspan="2">Событий пока нет</td></tr>'}</tbody></table></div><div class="section-title"><h2>Исходные отметки из Excel</h2><small>${d.imported.length} записей</small></div><p class="muted">Значения сохранены без автоматического толкования и не заменяют новые оценки преподавателя.</p>${d.imported.length ? `<div class="table-wrap"><table><thead><tr><th>Источник</th><th>Лист / ячейка</th><th>Значение</th></tr></thead><tbody>${d.imported.map((o) => `<tr><td>${esc(o.file_name)}</td><td>${esc(o.sheet)} / ${esc(o.cell)}</td><td>${esc(o.raw_value)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Для этой дисциплины исходных отметок нет.</div>'}`,
+      `<div class="stats">${stat("Версии работ", d.attempts.length, "история сохраняется")}${stat("Проверки", d.runs.length, "запуски Python")}${stat("Отзывы", d.reviews.length, "от преподавателя")}</div><div class="section-title"><h2>Мои работы</h2></div>${d.attempts.length ? `<div class="table-wrap"><table><thead><tr><th>Работа</th><th>Версия</th><th>Проверка</th><th>Действия</th></tr></thead><tbody>${d.attempts.map((a) => `<tr><td><strong>${esc(a.title)}</strong><details><summary>Код и объяснение</summary><pre>${esc(a.code)}\n\n${esc(a.explanation)}</pre></details></td><td>v${a.number}<br><small>${esc(assistanceNames[a.assistance] || a.assistance)}</small></td><td>${d.reviews.some((r) => r.attempt_id === a.id) ? `<strong>${esc(d.reviews.find((r) => r.attempt_id === a.id).score)} / 100</strong><br>` : ""}${esc(statusNames[d.runs.find((r) => r.attempt_id === a.id && !r.result?.comparisonId)?.status] || "Не запускалась")}<br><small>${esc(d.reviews.find((r) => r.attempt_id === a.id)?.feedback || "Ожидает преподавателя")}</small></td><td><button class="secondary" data-appeal="${a.id}">Апелляция</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty"><h3>Первая работа ещё впереди</h3>Выберите тему в дисциплине и сохраните решение.</div>'}<div class="section-title"><h2>События обучения</h2></div><div class="table-wrap"><table><thead><tr><th>Время</th><th>Событие</th></tr></thead><tbody>${d.events.map((e) => `<tr><td>${esc(new Date(e.created_at).toLocaleString("ru"))}</td><td>${esc(eventNames[e.kind] || e.kind)}</td></tr>`).join("") || '<tr><td colspan="2">Событий пока нет</td></tr>'}</tbody></table></div>${journalResearch(d)}<div class="section-title"><h2>Исходные отметки из Excel</h2><small>${d.imported.length} записей</small></div><p class="muted">Значения сохранены без автоматического толкования и не заменяют новые оценки преподавателя.</p>${d.imported.length ? `<div class="table-wrap"><table><thead><tr><th>Источник</th><th>Лист / ячейка</th><th>Значение</th></tr></thead><tbody>${d.imported.map((o) => `<tr><td>${esc(o.file_name)}</td><td>${esc(o.sheet)} / ${esc(o.cell)}</td><td>${esc(o.raw_value)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Для этой дисциплины исходных отметок нет.</div>'}`,
   );
 }
 async function showManagement(next) {
+  if (next === "backups") {
+    shell(
+      head(
+        "Резервные копии",
+        "Сохраните согласованный SQL-снимок работающей БД для восстановления или переноса в облако.",
+      ) +
+        '<section class="card"><h3>Экспорт текущей базы</h3><p class="muted">Копия включает пользователей, роли, содержание, версии работ и журналы. Активные сессии исключены. Для восстановления сначала применяются миграции в пустой PostgreSQL, затем этот SQL.</p><div class="notice warn">В файле будут персональные данные и хеши паролей. Храните его в закрытой папке. Не добавляйте в публичный GitHub и не передавайте LLM.</div><button data-action="backup">Скачать закрытый SQL-снимок</button></section>',
+    );
+    return;
+  }
   if (next === "staff") {
     const d = await api("staff/journal");
     shell(
@@ -213,7 +258,7 @@ async function showManagement(next) {
           : "Работы и проверка",
         "Показаны только назначенные вам группы и работы.",
       ) +
-        `<div class="stats">${stat("Студенты", d.students.length, "в вашей области доступа")}${stat("Работы", d.attempts.length, "сохранённые версии")}${stat("Ожидают проверки", d.attempts.filter((a) => a.status === "submitted").length, "в очереди")}</div>${d.attempts.length ? d.attempts.map((a) => `<section class="card"><div class="page-head"><div><h3>${esc(a.title)} · v${a.number}</h3><small>${esc(a.student)} / ${esc(a.group)} · ${esc(a.assistance)}</small></div><span class="badge gray">${esc(a.status)}</span></div><details><summary>Решение и объяснение</summary><pre>${esc(a.code)}\n\n${esc(a.explanation)}</pre></details>${user.roles.includes("teacher") ? `<form class="review" data-id="${a.id}"><div class="two"><div><label>Балл (0–100)</label><input name="score" type="number" min="0" max="100" required></div><div><label>Обратная связь</label><textarea name="feedback" minlength="20" required></textarea></div></div><label class="check"><input name="independent" type="checkbox">Самостоятельность проверена</label><label class="check"><input name="transfer" type="checkbox">Проверен перенос на новую задачу</label><div class="row"><button>Сохранить проверку</button></div></form>` : `<div class="row"><button class="secondary" data-student-journal="${a.user_id}">Открыть журнал</button></div>`}</section>`).join("<br>") : '<div class="empty"><h3>Очередь пуста</h3>Отправленные студентами работы появятся здесь после назначения учебной области.</div>'}<div class="section-title"><h2>Назначенные студенты</h2></div><div class="table-wrap"><table><thead><tr><th>Студент</th><th>Группа</th></tr></thead><tbody>${d.students.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.group_title)}</td></tr>`).join("") || '<tr><td colspan="2">Назначений нет</td></tr>'}</tbody></table></div>`,
+        `<div class="stats">${stat("Студенты", d.students.length, "в вашей области доступа")}${stat("Работы", d.attempts.length, "сохранённые версии")}${stat("Ожидают проверки", d.attempts.filter((a) => a.status === "submitted").length, "в очереди")}</div>${d.attempts.length ? d.attempts.map((a) => `<section class="card"><div class="page-head"><div><h3>${esc(a.title)} · v${a.number}</h3><small>${esc(a.student)} / ${esc(a.group)} · ${esc(assistanceNames[a.assistance] || a.assistance)}</small></div><span class="badge gray">${esc(statusNames[a.status] || a.status)}</span></div><details><summary>Решение и объяснение</summary><pre>${esc(a.code)}\n\n${esc(a.explanation)}</pre></details>${user.roles.includes("teacher") ? `<form class="review" data-id="${a.id}"><div class="two"><div><label>Балл (0–100)</label><input name="score" type="number" min="0" max="100" required></div><div><label>Обратная связь</label><textarea name="feedback" minlength="20" required></textarea></div></div><label class="check"><input name="independent" type="checkbox">Самостоятельность проверена</label><label class="check"><input name="transfer" type="checkbox">Проверен перенос на новую задачу</label><div class="row"><button>Сохранить проверку</button></div></form>` : `<div class="row">${user.roles.includes("tutor") ? `<button class="secondary" data-student-journal="${a.user_id}">Открыть журнал</button>` : ""}</div>`}</section>`).join("<br>") : '<div class="empty"><h3>Очередь пуста</h3>Отправленные студентами работы появятся здесь после назначения учебной области.</div>'}<div class="section-title"><h2>Назначенные студенты</h2></div><div class="table-wrap"><table><thead><tr><th>Студент</th><th>Группа</th></tr></thead><tbody>${d.students.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.group_title)}</td></tr>`).join("") || '<tr><td colspan="2">Назначений нет</td></tr>'}</tbody></table></div>`,
     );
   } else if (next === "curriculum") {
     const d = await api("curriculum");
@@ -293,12 +338,12 @@ document.addEventListener("submit", async (e) => {
     button = f.querySelector("button[type=submit],button:not([type])");
   if (button) button.disabled = true;
   try {
-    if (f.id === "login") {
+    if (f.id === "login-form") {
       const d = await api("login", values);
       user = d.user;
       if (user.forceReset) login(true);
       else await show();
-    } else if (f.id === "password") {
+    } else if (f.id === "password-form") {
       await api("password", values);
       login();
       toast("Пароль обновлён. Войдите с новым паролем.");
@@ -349,7 +394,7 @@ document.addEventListener("submit", async (e) => {
         consent: values.consent === "on",
       });
       $("#compare-result").innerHTML =
-        `<div class="result">${d.disabled ? esc(d.message) : `<small>${esc(d.note)}</small><pre>${esc(d.code)}</pre>`}</div>`;
+        `<div class="result">${d.disabled ? esc(d.message) : `<small>${esc(d.note)}</small><pre>${esc(d.code)}</pre><div class="row"><button type="button" class="secondary" data-check-comparison="${d.id}">Проверить этот вариант в браузере</button></div>`}</div>`;
     } else if (f.classList.contains("review")) {
       await api("reviews", {
         attemptId: f.dataset.id,
@@ -385,11 +430,49 @@ document.addEventListener("click", async (e) => {
       await api("logout", {});
       login();
     }
+    if (el.dataset.action === "backup") {
+      el.disabled = true;
+      try {
+        const d = await api("admin/backup", {});
+        const link = document.createElement("a");
+        const blobUrl = URL.createObjectURL(
+          new Blob([d.sql], { type: "application/sql" }),
+        );
+        link.href = blobUrl;
+        link.download = d.filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+        toast("Закрытая резервная копия подготовлена");
+      } finally {
+        el.disabled = false;
+      }
+    }
     if (el.dataset.action === "run") {
       if (!lastAttempt) throw new Error("Сначала сохраните версию кода");
-      const d = await api("run", { attemptId: lastAttempt.id });
+      el.disabled = true;
+      let d;
+      try {
+        d = home?.runner
+          ? await api("run", { attemptId: lastAttempt.id })
+          : await browserRun(lastAttempt.id);
+      } finally {
+        el.disabled = false;
+      }
       $("#run-result").innerHTML =
-        `<div class="result"><strong>${esc({ passed: "Тесты пройдены", failed: "Есть ошибки", unavailable: "Исполнитель не подключён", error: "Ошибка исполнителя" }[d.status] || d.status)}</strong><p>${d.status === "unavailable" ? "Работа сохранена. Изолированный Python-исполнитель будет подключён на сервере." : d.status === "error" ? "Повторите позже. Сохранённый код доступен преподавателю." : (d.cases || []).map((x, i) => `Тест ${i + 1}: ${x.passed ? "✓" : "ошибка"}`).join("<br>")}</p><small>Результат запуска записан в журнал. Он не заменяет преподавательскую оценку.</small></div>`;
+        `<div class="result"><strong>${esc({ passed: "Тесты пройдены", failed: "Есть ошибки", unavailable: "Исполнитель не подключён", error: "Ошибка исполнения" }[d.status] || d.status)}</strong><p>${d.status === "unavailable" ? "Работа сохранена. Изолированный серверный исполнитель не подключён." : d.status === "error" ? esc(d.message || "Повторите позже. Код сохранён.") : (d.cases || []).map((x, i) => `Тест ${i + 1}: ${x.passed ? "✓" : "ошибка " + esc(x.error || "")}`).join("<br>")}</p><small>${d.source === "browser_unverified" ? "Предварительная проверка в браузере. " : ""}Результат записан в журнал и не заменяет преподавательскую оценку.</small></div>`;
+    }
+    if (el.dataset.checkComparison) {
+      el.disabled = true;
+      try {
+        const d = await browserRun(lastAttempt.id, el.dataset.checkComparison);
+        toast(
+          d.status === "passed"
+            ? "Вариант прошёл тесты в браузере; результат записан"
+            : "Вариант содержит ошибки или превысил лимит",
+        );
+      } finally {
+        el.disabled = false;
+      }
     }
     if (el.dataset.studentJournal) await showJournal(el.dataset.studentJournal);
     if (el.dataset.appeal) {
@@ -425,6 +508,43 @@ document.addEventListener("click", async (e) => {
     toast(err.message, true);
   }
 });
+async function browserRun(attemptId, comparisonId) {
+  const job = await api("browser-run/start", { attemptId, comparisonId });
+  toast("Запускается локальный Python в браузере…");
+  const result = await new Promise((resolve) => {
+    const worker = new Worker("/python-worker.js", {
+      type: "module",
+      name: "cop-python",
+    });
+    let timer = setTimeout(
+        () => finish({ error: "Превышено время загрузки Python (45 с)" }),
+        45000,
+      ),
+      done = false;
+    function finish(value) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(value);
+    }
+    worker.onerror = () =>
+      finish({ error: "Не удалось запустить Python в браузере" });
+    worker.onmessage = ({ data }) => {
+      if (data.type === "ready") {
+        clearTimeout(timer);
+        timer = setTimeout(
+          () => finish({ error: "Превышен лимит исполнения Python (4 с)" }),
+          4000,
+        );
+        worker.postMessage({ code: job.code, inputs: job.inputs });
+      }
+      if (data.type === "done") finish({ outputs: data.outputs });
+      if (data.type === "error") finish({ error: data.message });
+    };
+  });
+  return api("browser-run/finish", { runId: job.id, ...result });
+}
 try {
   const d = await api("me");
   user = d.user;
@@ -432,4 +552,40 @@ try {
   else await show();
 } catch {
   login();
+}
+
+function journalResearch(d) {
+  const hypotheses = d.hypotheses || [],
+    experiments = d.experiments || [],
+    comparisons = d.comparisons || [];
+  return `<div class="section-title"><h2>Гипотезы и опыты</h2><small>${hypotheses.length} гипотез · ${experiments.length} опытов</small></div>${
+    hypotheses
+      .map(
+        (h) =>
+          `<details class="card"><summary>${esc(h.title)} · ${esc(h.prediction)}</summary><p>${esc(h.rationale)}</p>${experiments
+            .filter((x) => x.hypothesis_id === h.id)
+            .map(
+              (x) =>
+                `<div class="result"><strong>${esc(x.measurements.algorithm)} · n=${x.parameters.n} · seed=${x.parameters.seed}</strong><p>${x.measurements.comparisons} сравнений ключей</p><small>${esc(x.conclusion)}</small></div>`,
+            )
+            .join("")}</details>`,
+      )
+      .join("") || '<div class="empty">Гипотез пока нет</div>'
+  }<div class="section-title"><h2>Сравнения решений</h2><small>${comparisons.length} записей</small></div>${
+    comparisons
+      .map(
+        (c) =>
+          `<details class="card"><summary>Версия ${c.number} · ${c.source === "reference" ? "Методический эталон" : "Ответ LLM"}</summary><p>${esc(c.conclusion)}</p><pre>${esc(c.generated_code)}</pre><p class="form-help">${
+            d.runs
+              .filter((r) => r.result?.comparisonId === c.id)
+              .map(
+                (r) =>
+                  esc(statusNames[r.status] || r.status) +
+                  " · проверка варианта в браузере",
+              )
+              .join("<br>") || "Проверка этого варианта не запускалась"
+          }</p></details>`,
+      )
+      .join("") || '<div class="empty">Сравнений пока нет</div>'
+  }`;
 }
